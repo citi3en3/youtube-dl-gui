@@ -24,6 +24,11 @@ pub fn build_format_args(
         sort_fields.push("asr".into());
       }
 
+      // Prefer widely-supported audio codecs over Opus
+      sort_fields.push("aext:m4a".into());
+      sort_fields.push("aext:mp3".into());
+      sort_fields.push("aext:ogg".into());
+
       let sort_arg = sort_fields.join(",");
 
       args.push("-S".into());

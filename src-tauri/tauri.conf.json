@@ -7,7 +7,7 @@
   "build": {
     "beforeDevCommand": "npm run build:isolation && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build && npm run licenses",
+    "beforeBuildCommand": "npm run build && npm run licenses:npm && npm run licenses:gen",
     "frontendDist": "../dist"
   },
   "app": {
