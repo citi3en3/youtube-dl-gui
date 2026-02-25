@@ -58,6 +58,10 @@ pub fn build_format_args(
         sort_fields.push("fps".into());
       }
 
+      // Prefer widely-supported audio codecs over Opus to avoid playback issues
+      sort_fields.push("aext:m4a".into());
+      sort_fields.push("aext:mp3".into());
+
       if matches!(output_settings.video.container, VideoContainer::Mp4) {
         sort_fields.push("ext:mp4".into());
         sort_fields.push("ext:m4a".into());
@@ -195,7 +199,7 @@ mod tests {
 
     let args = build_format_args(&format_options, &settings);
 
-    let expected: Vec<String> = vec!["-x", "-f", "ba/best", "-S", "lang,asr"]
+    let expected: Vec<String> = vec!["-x", "-f", "ba/best", "-S", "lang,asr,aext:m4a,aext:mp3,aext:ogg"]
       .into_iter()
       .map(String::from)
       .collect();
@@ -210,7 +214,7 @@ mod tests {
 
     let args = build_format_args(&format_options, &settings);
 
-    let expected: Vec<String> = vec!["-x", "-f", "ba/best", "-S", "lang,asr~44"]
+    let expected: Vec<String> = vec!["-x", "-f", "ba/best", "-S", "lang,asr~44,aext:m4a,aext:mp3,aext:ogg"]
       .into_iter()
       .map(String::from)
       .collect();
@@ -225,7 +229,7 @@ mod tests {
 
     let args = build_format_args(&format_options, &settings);
 
-    let expected: Vec<String> = vec!["-f", "bv", "-S", "lang,res:720,fps:60,ext:mp4,ext:m4a"]
+    let expected: Vec<String> = vec!["-f", "bv", "-S", "lang,res:720,fps:60,aext:m4a,aext:mp3,ext:mp4,ext:m4a"]
       .into_iter()
       .map(String::from)
       .collect();
@@ -242,7 +246,7 @@ mod tests {
 
     let args = build_format_args(&format_options, &settings);
 
-    let expected: Vec<String> = vec!["-f", "bv", "-S", "lang,res:720,fps:60,ext"]
+    let expected: Vec<String> = vec!["-f", "bv", "-S", "lang,res:720,fps:60,aext:m4a,aext:mp3,ext"]
       .into_iter()
       .map(String::from)
       .collect();
@@ -261,7 +265,7 @@ mod tests {
       "-f",
       "bv*+ba/bv+ba/best",
       "-S",
-      "lang,res:1080,fps:30,ext:mp4,ext:m4a",
+      "lang,res:1080,fps:30,aext:m4a,aext:mp3,ext:mp4,ext:m4a",
     ]
     .into_iter()
     .map(String::from)
