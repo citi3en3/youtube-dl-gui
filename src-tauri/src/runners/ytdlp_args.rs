@@ -119,37 +119,73 @@ pub fn build_output_args(
       }
     },
 
-    TrackType::Video | TrackType::Both => match output_settings.video.policy {
-      TranscodePolicy::Never => {
-        if output_settings.add_thumbnail {
-          args.push("--embed-thumbnail".into());
-        }
-      }
-      TranscodePolicy::RemuxOnly => {
-        args.push("--remux-video".into());
-        let container = match output_settings.video.container {
-          VideoContainer::Mp4 => "mp4",
-          VideoContainer::Mkv => "mkv",
-        };
-        args.push(container.into());
+    TrackType::Video | TrackType::Both => {
+      let force_mp4_audio_compat = matches!(format_options.track_type, TrackType::Both)
+        && matches!(output_settings.video.container, VideoContainer::Mp4)
+        && !matches!(output_settings.video.policy, TranscodePolicy::AllowReencode);
 
-        if output_settings.add_thumbnail {
-          args.push("--embed-thumbnail".into());
-        }
-      }
-      TranscodePolicy::AllowReencode => {
-        args.push("--recode-video".into());
-        let container = match output_settings.video.container {
-          VideoContainer::Mp4 => "mp4",
-          VideoContainer::Mkv => "mkv",
-        };
-        args.push(container.into());
+      match output_settings.video.policy {
+        TranscodePolicy::Never => {
+          // Under Never policy no post-processor normally runs.  When we need
+          // mp4 audio compatibility we force a remux so the VideoRemuxer
+          // post-processor executes and our --ppa args can convert the audio.
+          if force_mp4_audio_compat {
+            args.push("--remux-video".into());
+            args.push("mp4".into());
+          }
 
-        if output_settings.add_thumbnail {
-          args.push("--embed-thumbnail".into());
+          if output_settings.add_thumbnail {
+            args.push("--embed-thumbnail".into());
+          }
+        }
+        TranscodePolicy::RemuxOnly => {
+          args.push("--remux-video".into());
+          let container = match output_settings.video.container {
+            VideoContainer::Mp4 => "mp4",
+            VideoContainer::Mkv => "mkv",
+          };
+          args.push(container.into());
+
+          if output_settings.add_thumbnail {
+            args.push("--embed-thumbnail".into());
+          }
+        }
+        TranscodePolicy::AllowReencode => {
+          args.push("--recode-video".into());
+          let container = match output_settings.video.container {
+            VideoContainer::Mp4 => "mp4",
+            VideoContainer::Mkv => "mkv",
+          };
+          args.push(container.into());
+
+          if output_settings.add_thumbnail {
+            args.push("--embed-thumbnail".into());
+          }
         }
       }
-    },
+
+      // Opus audio inside mp4 is not supported by Windows.  We need to
+      // ensure audio gets converted to AAC during post-processing.
+      //
+      // --merge-output-format mp4 forces the ffmpeg merge step to produce
+      // an mp4 file (without it, two webm inputs → webm output which
+      // cannot hold AAC audio).
+      //
+      // --postprocessor-args "ffmpeg:-c:v copy -c:a aac -b:a 128k"
+      // applies to every ffmpeg-based postprocessor (Merger, Remuxer, etc.)
+      // ensuring opus audio is always re-encoded to AAC regardless of
+      // which yt-dlp post-processing step runs.  Video is copied so there
+      // is no quality loss or extra encoding time.
+      //
+      // AllowReencode is excluded because --recode-video already
+      // re-encodes all streams including audio.
+      if force_mp4_audio_compat {
+        args.push("--merge-output-format".into());
+        args.push("mp4".into());
+        args.push("--postprocessor-args".into());
+        args.push("ffmpeg:-c:v copy -c:a aac -b:a 128k".into());
+      }
+    }
   }
 
   if output_settings.add_metadata {
@@ -411,11 +447,85 @@ mod tests {
       "--remux-video",
       "mp4",
       "--embed-thumbnail",
+      "--merge-output-format",
+      "mp4",
+      "--postprocessor-args",
+      "ffmpeg:-c:v copy -c:a aac -b:a 128k",
       "--add-metadata",
     ]
     .into_iter()
     .map(String::from)
     .collect();
+
+    assert_eq!(args, expected);
+  }
+
+  #[test]
+  fn both_track_type_never_policy_mp4_adds_ppa() {
+    let format_options = make_both_format_options(Some(1080), Some(30));
+
+    let mut settings = OutputSettings::default();
+    settings.video.policy = TranscodePolicy::Never;
+    settings.video.container = VideoContainer::Mp4;
+    settings.add_thumbnail = false;
+
+    let args = build_output_args(&format_options, &settings);
+
+    // Never policy normally skips post-processing, but for Both+Mp4 we
+    // force --remux-video so ffmpeg runs and converts audio.
+    let expected: Vec<String> = vec![
+      "--remux-video",
+      "mp4",
+      "--merge-output-format",
+      "mp4",
+      "--postprocessor-args",
+      "ffmpeg:-c:v copy -c:a aac -b:a 128k",
+      "--add-metadata",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    assert_eq!(args, expected);
+  }
+
+  #[test]
+  fn both_track_type_reencode_mp4_no_ppa() {
+    let format_options = make_both_format_options(Some(1080), Some(30));
+
+    let mut settings = OutputSettings::default();
+    settings.video.policy = TranscodePolicy::AllowReencode;
+    settings.video.container = VideoContainer::Mp4;
+    settings.add_thumbnail = false;
+
+    let args = build_output_args(&format_options, &settings);
+
+    // AllowReencode uses --recode-video which handles audio conversion already;
+    // no --ppa should be added.
+    let expected: Vec<String> = vec!["--recode-video", "mp4", "--add-metadata"]
+      .into_iter()
+      .map(String::from)
+      .collect();
+
+    assert_eq!(args, expected);
+  }
+
+  #[test]
+  fn both_track_type_remux_mkv_no_ppa() {
+    let format_options = make_both_format_options(Some(1080), Some(30));
+
+    let mut settings = OutputSettings::default();
+    settings.video.policy = TranscodePolicy::RemuxOnly;
+    settings.video.container = VideoContainer::Mkv;
+    settings.add_thumbnail = false;
+
+    let args = build_output_args(&format_options, &settings);
+
+    // MKV supports Opus natively, so no --ppa should be added.
+    let expected: Vec<String> = vec!["--remux-video", "mkv", "--add-metadata"]
+      .into_iter()
+      .map(String::from)
+      .collect();
 
     assert_eq!(args, expected);
   }

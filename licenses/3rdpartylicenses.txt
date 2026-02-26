@@ -8,7 +8,7 @@ This application may download and use external tools at runtime.
 These tools are separate projects with their own licenses.
 The versions displayed here are the ones used when this file was generated, not necessarily the current versions used by the app.
 
-yt-dlp (2025.12.08)
+yt-dlp (2026.02.21)
   License: Unlicense
   Project: https://github.com/yt-dlp/yt-dlp
 
@@ -20,7 +20,7 @@ ffprobe (b6.1.1)
   License: GPL-3.0-or-later
   Project: https://ffmpeg.org/
 
-Deno (v2.6.3)
+Deno (v2.6.10)
   License: MIT
   Project: https://deno.land/
 
